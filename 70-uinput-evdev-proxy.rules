@@ -1,0 +1,5 @@
+# This rule allows the input group to access /dev/uinput device to create virtual input devices
+KERNEL=="uinput", SUBSYSTEM=="misc", GROUP="input", MODE="660"
+
+# Create rules for your virtual devices to get persistent names
+KERNEL=="event*", SUBSYSTEM=="input", ATTRS{name}=="EvdevProxyDev", SYMLINK+="input/by-id/virtual-event-$attr{name}"

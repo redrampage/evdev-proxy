@@ -1,0 +1,9 @@
+#!/bin/sh
+
+set -e
+
+adduser --quiet --system --group --no-create-home --home /tmp \
+    --gecos "evdev device hot-plug proxy" evdev-proxy
+usermod -aG input evdev-proxy
+
+#DEBHELPER#

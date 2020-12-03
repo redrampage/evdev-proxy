@@ -1,0 +1,3 @@
+target/release/evdev-proxy /usr/bin
+config.toml /etc/evdev-proxy
+70-uinput-evdev-proxy.rules /lib/udev/rules.d

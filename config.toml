@@ -1,0 +1,13 @@
+log_level = "INFO"
+
+[[proxy_devices]]
+  name = "EvdevProxyDev"
+  vendor = 0x1337
+  model = 0x1337
+
+[[grab_devices]]
+  name = "none"
+# Put some selectors here to select which devices get grabbed
+#  [[grab_devices.selectors]]
+#    USBID={vendor=0x046d, model=0xc52b}
+

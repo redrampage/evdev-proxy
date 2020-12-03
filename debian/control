@@ -1,0 +1,13 @@
+Source: evdev-proxy
+Section: utils
+Priority: optional
+Maintainer: RedRampage <redrampage@gmail.com>
+Build-Depends: debhelper-compat (= 13)
+Standards-Version: 4.5.0
+Homepage: https://github.com/redrampage/evdev-proxy
+Rules-Requires-Root: no
+
+Package: evdev-proxy
+Architecture: amd64
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Proxy evdev devices to single virtual uinput device
