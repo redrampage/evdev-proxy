@@ -1,12 +1,10 @@
-use std::fmt::Debug;
 use std::fs::{File, OpenOptions};
 use std::io;
-use std::path::Path;
 
 use input_linux::{EventKind, InputId, Key, MiscKind, RelativeAxis, UInputHandle};
 use input_linux::sys;
 
-static DEFAULT_KEYS: [Key; 106] = [
+static KEYBOARD_KEYS: [Key; 106] = [
     // Row 1
     Key::Esc,
 
@@ -161,8 +159,79 @@ static MOUSE_KEYS: [Key; 18] = [
     Key::ButtonTask,
 ];
 
-pub fn new_uinput_device<P: AsRef<Path> + Debug>(path: P, name: &str, vendor: u16, product: u16) -> io::Result<UInputHandle<File>> {
-    info!("Creating UInput device '{:}' ({:x}:{:x})", name, vendor, product);
+static UINPUT_PATH: &str = "/dev/uinput";
+
+pub fn new_uinput_kbd(name: &str, vendor: u16, product: u16) -> io::Result<UInputHandle<File>> {
+    info!("Creating new uinput keyboard");
+    let id = InputId{
+        vendor,
+        product,
+        bustype: sys::BUS_USB,
+        version: 5,
+    };
+    let fd = OpenOptions::new().read(true).write(true).open(UINPUT_PATH)?;
+    let handle = UInputHandle::new(fd);
+
+    for t in &[EventKind::Synchronize, EventKind::Misc, EventKind::Key] {
+        debug!("Setting EvKindBit flag: {:?}", t);
+        handle.set_evbit(*t)?;
+    }
+
+    for m in &[MiscKind::Scancode] {
+        handle.set_mscbit(*m)?;
+    }
+
+    for k in &KEYBOARD_KEYS {
+        debug!("Setting KeyBit flag: {:?}", k);
+        handle.set_keybit(*k)?;
+    }
+
+    handle.create(&id, name.as_bytes(), 0, &vec![])?;
+    info!("UInput keyboard device '{:?}'({:?}) successfully created", handle.sys_path()?, handle.evdev_name()?);
+    Ok(handle)
+}
+
+pub fn new_uinput_mouse(name: &str, vendor: u16, product: u16) -> io::Result<UInputHandle<File>> {
+    info!("Creating new uinput mouse");
+    let id = InputId{
+        vendor,
+        product,
+        bustype: sys::BUS_USB,
+        version: 5,
+    };
+    let fd = OpenOptions::new().read(true).write(true).open(UINPUT_PATH)?;
+    let handle = UInputHandle::new(fd);
+
+    for t in &[EventKind::Synchronize, EventKind::Misc, EventKind::Key,
+        EventKind::Relative] {
+        debug!("Setting EvKindBit flag: {:?}", t);
+        handle.set_evbit(*t)?;
+    }
+
+    for m in &[MiscKind::Scancode] {
+        handle.set_mscbit(*m)?;
+    }
+
+    for k in &MOUSE_KEYS {
+        debug!("Setting KeyBit flag: {:?}", k);
+        handle.set_keybit(*k)?;
+    }
+
+    // Mouse AXIS
+    for r in &[RelativeAxis::X, RelativeAxis::Y, RelativeAxis:: Wheel,
+        RelativeAxis::HorizontalWheel,
+        RelativeAxis::WheelHiRes, RelativeAxis::HorizontalWheelHiRes] {
+        debug!("Setting Relative Axis flag: {:?}", r);
+        handle.set_relbit(*r)?;
+    }
+
+    handle.create(&id, name.as_bytes(), 0, &vec![])?;
+    info!("UInput mouse device '{:?}'({:?}) successfully created", handle.sys_path()?, handle.evdev_name()?);
+    Ok(handle)
+}
+
+pub fn new_uinput_aio(name: &str, vendor: u16, product: u16) -> io::Result<UInputHandle<File>> {
+    info!("Creating AIO UInput device '{:}' ({:x}:{:x})", name, vendor, product);
 
     let id = InputId{
          vendor,
@@ -171,7 +240,7 @@ pub fn new_uinput_device<P: AsRef<Path> + Debug>(path: P, name: &str, vendor: u1
          version: 5,
     };
 
-    let fd = OpenOptions::new().read(true).write(true).open(path)?;
+    let fd = OpenOptions::new().read(true).write(true).open(UINPUT_PATH)?;
     let handle = UInputHandle::new(fd);
 
     for t in &[EventKind::Synchronize, EventKind::Misc, EventKind::Key,
@@ -184,7 +253,7 @@ pub fn new_uinput_device<P: AsRef<Path> + Debug>(path: P, name: &str, vendor: u1
         handle.set_mscbit(*m)?;
     }
 
-    for k in &DEFAULT_KEYS {
+    for k in &KEYBOARD_KEYS {
         debug!("Setting KeyBit flag: {:?}", k);
         handle.set_keybit(*k)?;
     }
@@ -202,6 +271,6 @@ pub fn new_uinput_device<P: AsRef<Path> + Debug>(path: P, name: &str, vendor: u1
     }
 
     handle.create(&id, name.as_bytes(), 0, &vec![])?;
-    info!("UInput device '{:?}'({:?}) successfully created", handle.sys_path()?, handle.evdev_name()?);
+    info!("AIO UInput device '{:?}'({:?}) successfully created", handle.sys_path()?, handle.evdev_name()?);
     Ok(handle)
 }

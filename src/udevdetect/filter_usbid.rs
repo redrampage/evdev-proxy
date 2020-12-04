@@ -3,21 +3,21 @@ use udev::{Device, Event};
 use crate::udevdetect::{DevFilter, get_device_property, get_event_property};
 
 #[derive(Debug)]
-pub struct DevIDFilter {
+pub struct USBIDFilter {
     vendor: String,
     model: String,
 }
-impl DevIDFilter {
+impl USBIDFilter {
     pub fn new(vendor: u16, model: u16) -> Self {
-        let f = DevIDFilter{
+        let f = USBIDFilter {
             vendor: format!("{:04x}", vendor),
             model: format!("{:04x}", model),
         };
-        debug!("New DEVID Filter for: {:?}:{:?}", f.vendor, f.model);
+        debug!("New USBID Filter for: {:?}:{:?}", f.vendor, f.model);
         f
     }
 }
-impl DevFilter for DevIDFilter {
+impl DevFilter for USBIDFilter {
     fn match_event(&self, e: &Event) -> bool {
         if get_event_property(e, "ID_VENDOR_ID") != self.vendor {
             return false

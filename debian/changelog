@@ -1,3 +1,13 @@
+evdev-proxy (0.1.1-1) unstable; urgency=medium
+
+  * Proxy device classes and multiple device support
+  * Added command-line parameters.
+  * Added support for multiple devices.
+  * Added support for various proxy device classes, like 'SimpleDevice'
+    creates one uinput device and forward event from all matched devices 
+
+ -- RedRampage <RedRampage@unknown>  Sun, 06 Dec 2020 22:57:48 +0300
+
 evdev-proxy (0.1.0-1) unstable; urgency=medium
 
   * Initial release
