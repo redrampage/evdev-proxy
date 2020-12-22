@@ -1,6 +1,7 @@
-pub use proxy::ProxyDev;
+pub use device_simple::Simple;
+pub use device_simple::SimpleDeviceClass;
 
 mod uinput;
-mod proxy;
+mod device_simple;
 mod evdev;
 

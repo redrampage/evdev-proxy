@@ -1,13 +1,59 @@
 log_level = "INFO"
 
-[[proxy_devices]]
-  name = "EvdevProxyDev"
-  vendor = 0x1337
-  model = 0x1337
-
-[[grab_devices]]
-  name = "none"
-# Put some selectors here to select which devices get grabbed
-#  [[grab_devices.selectors]]
-#    USBID={vendor=0x046d, model=0xc52b}
-
+##### Devices #####
+# !!! IMPORTANT NOTE !!!
+# Virtual device name should start with 'EvdevProxy' prefix, otherwise default
+# udev rules from '70-uinput-evdev-proxy.rules' won't create device symlink in
+# '/dev/input/by-id/' directory. If you want to use another name make sure to
+# configure udev accordingly.
+#
+# Available device types:
+#  * Simple -- Single virtual device that capture and proxy all devices that 
+#              match any of it's selectors
+#    Parameters:
+#      * vendor (int)     -- 16-bit device vendor ID
+#      * model (int)      -- 16-bit model vendor ID
+#      * class (enum)     -- device class (Mouse/Keyboard/AIO), 
+#                            AIO - all-in-one, device that acts both as KB 
+#                            and Mouse
+#      * selector (array) -- list of selectors that specify criteria used to 
+#                            select witch real evdev devices this virtual 
+#                            device should proxy
+#
+#    Available device selectors:
+#      * USBID      -- Simple selector that blindly selects usb device based 
+#                      on it's usb vendor:model identificator
+#      * USBIDClass -- Simple selector that blindly selects usb device based
+#                      on it's usb vendor:model identificator and device 
+#                      class (Mouse/Keyboard), useful for wireless devices
+#                      with single receiver (e.g. Logitech Unifying Receiver)
+#
+# Example devices:
+#[[device]]
+#  [device.Simple]
+#    name = "EvdevProxyKeyboard"
+#    vendor = 0x1337
+#    model = 0x1337
+#    class = "Keyboard"
+#    [[device.Simple.selector]]
+#      USBIDClass = {vendor=0x046d, model=0xc52b, class="Keyboard"}
+#
+#[[device]]
+#  [device.Simple]
+#    name = "EvdevProxyMouse"
+#    vendor = 0x1337
+#    model = 0x1338
+#    class = "Mouse"
+#    [[device.Simple.selector]]
+#      USBIDClass = {vendor=0x046d, model=0xc52b, class="Mouse"}
+#
+#[[device]]
+#  [device.Simple]
+#    name = "EvdevProxyAIO"
+#    vendor = 0x1337
+#    model = 0x1339
+#    class = "AIO"
+#    [[device.Simple.selector]]
+#      USBIDClass = {vendor=0x046d, model=0xc52b, class="Keyboard"}
+#    [[device.Simple.selector]]
+#      USBIDClass = {vendor=0x046d, model=0xc52b, class="Mouse"}

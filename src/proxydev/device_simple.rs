@@ -10,26 +10,43 @@ use crossbeam::channel;
 use input_linux::sys::input_event;
 
 use crate::proxydev::evdev::device_poller;
+use crate::proxydev::uinput::{new_uinput_aio, new_uinput_kbd, new_uinput_mouse};
 
-use super::uinput::new_uinput_device;
-
-pub struct ProxyDev {
+#[derive(Debug)]
+pub struct Simple {
     name: String,
     sources: Arc<Mutex<Vec<(String, Receiver<input_event>)>>>,
     ch_reload: (Sender<bool>, Receiver<bool>),
-    // dev_handle: UInputHandle<File>,
+    devpath: String,
 }
 
-impl ProxyDev {
-    pub fn new(name: &str, vendor: u16, model: u16) -> io::Result<ProxyDev> {
-        info!("Creating new proxy device '{:?}' ({:}:{:})", name, vendor, model);
+#[derive(Debug, Deserialize)]
+pub enum SimpleDeviceClass {
+    Keyboard,
+    Mouse,
+    AIO,
+}
 
-        let uin = new_uinput_device("/dev/uinput", name, vendor, model)?;
+impl Simple {
+    pub fn new(name: &str, class: SimpleDeviceClass, vendor: u16, model: u16) -> io::Result<Simple> {
+        info!("Creating new simple proxy device '{:?}' ({:04x}:{:04x})", name, vendor, model);
+        let uin = match class {
+            SimpleDeviceClass::Keyboard => {
+                new_uinput_kbd(name, vendor, model)?
+            },
+            SimpleDeviceClass::Mouse => {
+                new_uinput_mouse(name, vendor, model)?
+            },
+            SimpleDeviceClass::AIO => {
+                new_uinput_aio(name, vendor, model)?
+            },
+        };
 
-        let dev = ProxyDev {
+        let dev = Simple {
             name: name.to_owned(),
             sources: Arc::new(Mutex::new(Vec::new())),
             ch_reload: channel::bounded(1),
+            devpath: uin.evdev_path().unwrap().into_os_string().into_string().unwrap(),
         };
 
         // Those vars if for thread
@@ -57,7 +74,8 @@ impl ProxyDev {
                 }
                 event_selector.recv(&ch_reload);
 
-                loop { // Source/reload event loop
+                // Source/reload event loop
+                loop {
                     let op = event_selector.select();
                     let op_idx = op.index();
 
@@ -87,7 +105,6 @@ impl ProxyDev {
                     }
                 }
             }
-            // info!("Event loop for proxy device '{:}' has finished", dev_name);
         });
 
         Ok(dev)
@@ -113,6 +130,10 @@ impl ProxyDev {
     pub fn num_sources(&self) -> usize {
         self.sources.lock().unwrap().len()
     }
+
+    pub fn dev_path(&self) -> &str {
+        &self.devpath
+    }
 }
 
 fn remove_dev_from_list<P: AsRef<Path> + Debug + ToString, T>(list: &Arc<Mutex<Vec<(String, T)>>>, path: P) {
@@ -122,4 +143,12 @@ fn remove_dev_from_list<P: AsRef<Path> + Debug + ToString, T>(list: &Arc<Mutex<V
         Some(idx) => {s.remove(idx);},
     };
 }
+
+// fn copy_sources<T: ToOwned, Y: Clone>(sources: &Mutex<Vec<(T, Y)>>) -> Vec<(T, Y)> {
+//     let psrc = &sources.lock().unwrap();
+//     let local_sources = Vec::with_capacity(psrc.len());
+//     for (name, s) in psrc.iter() {
+//         local_sources.push((name.to_owned(), s.clone()));
+//     }
+// }
 
