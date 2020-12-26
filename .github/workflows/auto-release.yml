@@ -1,0 +1,179 @@
+name: "Release package"
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+
+jobs:
+  # TODO:
+  #rustfmt:
+  #  runs-on: ubuntu-latest
+  #  steps:
+  #    - uses: "actions/checkout@v2"
+  #    - run: rustup component add rustfmt
+  #    - run: cargo fmt -- --check
+
+  check:
+    name: "Pre-flight checks"
+    runs-on: "ubuntu-latest"
+    steps:
+      - uses: "actions/checkout@v2"
+      - name: "Check versions"
+        id: ver
+        run: |
+          short_sha="${GITHUB_SHA:0:7}"
+          echo "Build revision ${GITHUB_SHA} (${short_sha})"
+
+          cargo_version="$(cat Cargo.toml | awk -F '=' -v 'section=package' -v 'key=version' '/^\s*#/ {next}; $0 == "[" section "]" {found=1; next}; /^\[/ {found=0; next}; found == 1 && $1 ~ key {print}' | cut -d'=' -f 2 | tr -d '" ')"
+          changelog_version="$(dpkg-parsechangelog -S version)"
+          version="${cargo_version}+${GITHUB_RUN_NUMBER}.${short_sha}"
+          echo "Package version: ${version}"
+
+          # Ensure that cargo and changelog versions match
+          if [[ -z "${cargo_version}" ]] || [[ -z "${changelog_version}" ]] || [[ "$cargo_version" != "${changelog_version}" ]]; then
+              printf "Package versions mismatch in Cargo.toml <--> debian/changelog (%s <--> %s)" "${cargo_version}" "${changelog_version}"
+              exit 255
+          fi
+          echo "::set-output name=version::${cargo_version}"
+          echo "::set-output name=debversion::${version}"
+    outputs:
+      version: "${{ steps.ver.outputs.version }}"
+      debversion: "${{ steps.ver.outputs.debversion }}"
+
+  build_linux:
+    name: "Build deb package"
+    runs-on: ubuntu-20.04
+    needs: "check"
+    steps:
+      - uses: "actions/checkout@v2"
+
+      - name: "Cache cargo and target"
+        uses: "actions/cache@v2"
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: "Prepare build env"
+        run: |
+          sudo apt-get update
+          sudo apt-get install debhelper devscripts equivs --no-install-recommends
+
+      - name: "Prepeare build deps"
+        run: |
+          sudo mk-build-deps --install debian/control
+
+      - name: "Set package version"
+        id: ver
+        run: |
+          basever="${{ needs.check.outputs.version }}"
+          version="${{ needs.check.outputs.debversion }}"
+
+          # Check if current build is for release version (tagged as version)
+          cv_tag_sha="$(git tag -l "v${basever}" --format '%(objectname)')"
+          if [[ -n "${cv_tag_sha}" ]]; then
+              echo "Current package version is tagged on ${cv_tag_sha}"
+              if [[ "${GITHUB_SHA}" = "${cv_tag_sha}" ]]; then
+                  echo "Current revision SHA is equal to version tag ${basever}"
+                  echo "::set-output name=is_release::true"
+
+                  dpkg-parsechangelog -S changes | tail -n +4 > release_notes
+                  echo -e "Release notes:\n"
+                  cat release_notes
+              fi
+          fi
+
+          # Set package version
+          dch -m -v "${version}" "Automatic package build"
+          dch -m -r ""
+
+
+      - name: "Build deb package"
+        id: deb
+        run: |
+          dpkg-buildpackage -us -uc -b
+
+          mkdir "packages"
+          mv ../*.deb ./packages
+          echo "Produced packages:"
+          ls -1 ./packages/*
+          echo "Build complete"
+
+          debnames="$(ls -1 ./packages/*deb | awk '{gsub(".*/", "", $0); if (NR > 1) printf(","); else printf("["); printf "\"%s\"", $0} END {printf("]")}')"
+          echo "::set-output name=debnames::${debnames}"
+
+      - name: "Upload changelog"
+        uses: "actions/upload-artifact@v2"
+        with:
+          name: "changelog"
+          path: "debian/changelog"
+          if-no-files-found: error
+
+      - name: "Upload release notes"
+        if: ${{ steps.ver.outputs.is_release == 'true' }}
+        uses: "actions/upload-artifact@v2"
+        with:
+          name: "release_notes"
+          path: "release_notes"
+
+      - name: "Upload packages"
+        uses: "actions/upload-artifact@v2"
+        with:
+          name: "deb-packages"
+          path: "packages/*.deb"
+          retention-days: 14
+          if-no-files-found: error
+    outputs:
+      is_release: "${{ steps.ver.outputs.is_release }}"
+      debnames:   "${{ steps.deb.outputs.debnames }}"
+      version:    "${{ needs.check.outputs.version }}"
+
+  create_release:
+    needs: "build_linux"
+    if: needs.build_linux.outputs.is_release == 'true'
+    runs-on: "ubuntu-latest"
+    steps:
+      - uses: "actions/download-artifact@v2"
+        with:
+          name: "release_notes"
+
+      - name: "Create release"
+        id: create_release
+        uses: "actions/create-release@v1"
+        env:
+          GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+        with:
+          tag_name: "v${{ needs.build_linux.outputs.version }}"
+          release_name: "${{ needs.build_linux.outputs.version }}"
+          body_path: "release_notes"
+    outputs:
+      upload_url: "${{ steps.create_release.outputs.upload_url }}"
+
+  populate_release:
+    needs:
+      - "build_linux"
+      - "create_release"
+    if: needs.build_linux.outputs.is_release == 'true'
+    runs-on: "ubuntu-latest"
+    strategy:
+      matrix:
+        package: "${{ fromJson(needs.build_linux.outputs.debnames) }}"
+    steps:
+      - name: "Get artifacts"
+        uses: "actions/download-artifact@v2"
+        with:
+          name: "deb-packages"
+          path: "packages"
+
+      - name: "Populate debs"
+        uses: "actions/upload-release-asset@v1"
+        env:
+          GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+        with:
+          asset_content_type: "application/vnd.debian.binary-package"
+          upload_url: "${{ needs.create_release.outputs.upload_url }}"
+          asset_path: "packages/${{ matrix.package }}"
+          asset_name: "${{ matrix.package }}"
